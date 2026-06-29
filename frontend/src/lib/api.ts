@@ -54,7 +54,16 @@ export async function validateKey(apiKey: string, model: string): Promise<{ ok: 
       body: JSON.stringify({ model }),
     })
     const body = await res.json().catch(() => ({}))
-    if (!res.ok) return { ok: false, error: body.error || `Validation failed (${res.status})` }
+    if (!res.ok) {
+      if (res.status === 502 || res.status === 503 || res.status === 504) {
+        return {
+          ok: false,
+          error:
+            'Backend unreachable. From the project root run npm run dev (or npm run dev:backend) so the API gateway is listening on :3001.',
+        }
+      }
+      return { ok: false, error: body.error || `Validation failed (${res.status})` }
+    }
     return { ok: true }
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : 'Backend unreachable — is it running on :3001?' }
