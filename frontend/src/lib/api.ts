@@ -14,6 +14,7 @@ export interface SimulateStepRequest {
   stepIndex: number
   totalSteps: number
   taskGoal: string
+  expectedOutcome?: string
   priorContext: Pick<StepResult, 'action' | 'frustration' | 'succeeded'>[]
   image?: { data: string; mimeType: string }
 }
@@ -34,6 +35,7 @@ export async function simulateStep(req: SimulateStepRequest): Promise<SimulateSt
       stepIndex: req.stepIndex,
       totalSteps: req.totalSteps,
       taskGoal: req.taskGoal,
+      expectedOutcome: req.expectedOutcome,
       priorContext: req.priorContext,
       image: req.image,
     }),

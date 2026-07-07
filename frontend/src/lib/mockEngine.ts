@@ -1,13 +1,13 @@
 import type { ActionType, Persona, StepResult } from '@/types'
+import { personaContextText } from '@/lib/personaDefaults'
 
 /**
  * Sandbox Mock Mode engine.
  *
  * Produces context-aware simulated results without calling Gemini: it scans
- * the step text for casting-domain triggers (uploads, tokens, processing,
- * pagination, filters…), cross-references them against the active persona's
- * pain points and trait sliders, and synthesizes a plausible monologue,
- * action, and frustration value with accumulation across steps.
+ * the step text for casting-domain triggers (uploads, tokens, processing…),
+ * cross-references them against the active persona's pain points and thinking
+ * style, and synthesizes a plausible monologue, action, and frustration value.
  */
 
 interface TriggerRule {
@@ -45,61 +45,11 @@ const TRIGGER_RULES: TriggerRule[] = [
   },
   {
     pattern: /processing|wait|recalculat|render/i,
-    appliesTo: ['talent-actor', 'casting-director'],
+    appliesTo: ['talent-actor'],
     frustrationBoost: 15,
-    monologue: (p) =>
-      p.id === 'talent-actor'
-        ? "It's been sitting on this spinner for a while now. Has it paused? Failed? Finished? There's no timestamp, no progress, nothing telling me whether walking away is safe."
-        : 'A blocking processing state with no progress detail. I have three projects open — I need this to run in the background and notify me, not hold the screen hostage.',
+    monologue: () =>
+      "It's been sitting on this spinner for a while now. Has it paused? Failed? Finished? There's no timestamp, no progress, nothing telling me whether walking away is safe.",
     issue: 'Long-running processing state lacks progress detail, completion estimate, or a safe-to-leave signal.',
-  },
-  {
-    pattern: /paginat|page \d|next page|list of/i,
-    appliesTo: ['talent-rep'],
-    frustrationBoost: 26,
-    monologue: () =>
-      'Pagination. Twenty-five rows at a time for a 120-client roster — that is five reloads per triage pass. Where is the density toggle, where is "show all", where are my arrow-key bindings?',
-    issue: 'Mandatory pagination throttles power users; no density controls, bulk view, or keyboard navigation.',
-  },
-  {
-    pattern: /modal|dialog|popup|pop-up/i,
-    appliesTo: ['talent-rep'],
-    frustrationBoost: 20,
-    monologue: () =>
-      'Another full-screen modal for a one-field action, and it animates in slowly enough that I can feel my submissions-per-minute dropping. This should be inline editing or a side panel I can keep context behind.',
-    issue: 'Blocking modal used for a lightweight action; breaks multi-tab/multi-record working rhythm.',
-  },
-  {
-    pattern: /bulk|multiple|batch|roster|clients/i,
-    appliesTo: ['talent-rep'],
-    frustrationBoost: 18,
-    monologue: () =>
-      "I'm doing this one client at a time? I need checkboxes, a select-all, and one submit for the whole shortlist. Right now this is 40 identical click sequences and my afternoon is gone.",
-    issue: 'No bulk-select or batch submission affordance for multi-client workflows.',
-  },
-  {
-    pattern: /filter|search|facet/i,
-    appliesTo: ['casting-director'],
-    frustrationBoost: 24,
-    monologue: () =>
-      'I stacked four filters to get this exact shortlist. If clicking into one profile and coming back resets them — and it looks like it just did — that is unforgivable. Filter state is my working memory.',
-    issue: 'Filter state is not persisted across navigation; multi-layer filter combinations are lost on back-navigation.',
-  },
-  {
-    pattern: /compar|side-by-side|versus/i,
-    appliesTo: ['casting-director'],
-    frustrationBoost: 16,
-    monologue: () =>
-      "I'm flipping between two tabs to compare these two tapes because there's no side-by-side view. I do this comparison two hundred times a week — give me a split screen and synchronized playback.",
-    issue: 'No side-by-side media comparison view; forces tab-juggling for a core evaluation task.',
-  },
-  {
-    pattern: /tag|label|annotat/i,
-    appliesTo: ['casting-director'],
-    frustrationBoost: 14,
-    monologue: () =>
-      'Three clicks to apply one tag: open menu, scroll, click, confirm. Across four hundred submissions that is four thousand clicks. I need single-keystroke tagging shortcuts.',
-    issue: 'Media tagging requires multi-click interaction; no rapid keyboard tagging shortcuts.',
   },
   {
     pattern: /crop|headshot|photo|image|thumbnail/i,
@@ -124,16 +74,6 @@ const BASELINE_MONOLOGUES: Record<string, string[]> = {
     "Alright, I can see what they want me to tap, but I'm reading every label twice — with a booking on the line I don't trust myself to guess.",
     'This screen is fine, I think. The button is big enough. I just keep wondering what happens after I tap it, because nothing here tells me.',
     "Okay, that step worked, deep breath. The label could have been clearer but the layout pointed me in the right direction.",
-  ],
-  'talent-rep': [
-    'Fine, the path is obvious — it is just slower than it should be. One hover state and a tooltip would have saved me a click.',
-    "This works, but I'm already reaching for a keyboard shortcut that doesn't exist. Tab order is at least sane.",
-    'Acceptable. Dense enough to scan, action is where my cursor already was. More of this, please.',
-  ],
-  'casting-director': [
-    'The layout is readable and the action hierarchy makes sense. I would still relocate this control closer to the media grid.',
-    'Straightforward step. The data I need is above the fold, which is more than I can say for most tools.',
-    'Works as expected. I noted the load time on those thumbnails though — at scale that becomes a real cost.',
   ],
 }
 
@@ -172,6 +112,35 @@ function extractActionLabel(stepText: string): string {
   return 'CLICK the primary call-to-action'
 }
 
+function axisFrustrationBoost(persona: Persona, stepText: string, hits: TriggerRule[]): number {
+  const axis = persona.thinkingStyle.dominantCognitiveAxis
+  if (axis === 'risk_averse' && hits.length > 0) return 6
+  if (axis === 'analytical' && /ambiguous|unclear|vague|processing|status/i.test(stepText)) return 4
+  if (axis === 'divergent' && /only one|forced|linear|dead-end/i.test(stepText)) return 3
+  return 0
+}
+
+function visualContinuumBoost(persona: Persona, stepText: string): number {
+  const visual = persona.thinkingStyle.visualContinuumPreference
+  if (visual < 40 && /marketing|hero|banner|celebrat|welcome|story/i.test(stepText)) return 5
+  if (visual > 70 && /blank|sparse|minimal|no context|utility/i.test(stepText)) return 5
+  if (visual < 40 && /processing|status|upload|confirm/i.test(stepText) && !/%|eta|received|uploaded/i.test(stepText)) {
+    return 6
+  }
+  return 0
+}
+
+function infoPreferenceIssue(persona: Persona, stepText: string): string | null {
+  const pref = persona.thinkingStyle.informationProcessingPreference
+  if (pref === 'raw_data' && /processing|upload|submit|confirm/i.test(stepText) && !/%|timestamp|received|status:/i.test(stepText)) {
+    return 'Raw-data thinker needs explicit status labels, counts, or timestamps — narrative copy alone is insufficient.'
+  }
+  if (pref === 'narrative' && /error|failed|invalid/i.test(stepText) && !/because|why|next|help/i.test(stepText)) {
+    return 'Narrative-oriented user needs contextual explanation, not bare error codes.'
+  }
+  return null
+}
+
 export interface MockStepInput {
   persona: Persona
   stepText: string
@@ -187,28 +156,37 @@ export function mockSimulateStep(input: MockStepInput): Omit<StepResult, 'stepIn
     stepText.length * 31 + stepIndex * 7 + persona.id.length * 13 + persona.traits.techLiteracy
   )
 
-  // Find domain triggers relevant to this persona. A rule applies when the
-  // persona is one of its built-in targets, OR when the persona's own pain
-  // points mention the same concept — which is how team-created custom
-  // personas get context-aware reactions.
-  const painPointText = persona.painPoints.join(' ')
+  const contextText = personaContextText(persona)
   const hits = TRIGGER_RULES.filter(
     (r) =>
       r.pattern.test(stepText) &&
-      (r.appliesTo.length === 0 || r.appliesTo.includes(persona.id) || r.pattern.test(painPointText))
+      (r.appliesTo.length === 0 || r.appliesTo.includes(persona.id) || r.pattern.test(contextText))
   )
 
-  // Trait modifiers: low tech literacy amplifies confusion, low threshold amplifies frustration.
   const literacyPenalty = (100 - persona.traits.techLiteracy) * 0.15
   const thresholdPenalty = (100 - persona.traits.frustrationThreshold) * 0.2
   const experienceRelief = persona.traits.industryExperience * 0.08
 
   const triggerBoost = hits.reduce((sum, h) => sum + h.frustrationBoost, 0)
-  const carryOver = priorFrustration * 0.35 // frustration accumulates across steps
+  const carryOver = priorFrustration * 0.35
   const noise = rand() * 8 - 4
 
+  const triggerText = persona.frustrationTriggers.join(' ')
+  const quitKeywordBoost = triggerText && /upload|fee|token|confirm|processing|ambiguous|hidden/i.test(stepText) ? 8 : 0
+  const axisBoost = axisFrustrationBoost(persona, stepText, hits)
+  const visualBoost = visualContinuumBoost(persona, stepText)
+
   let frustration = clamp(
-    12 + triggerBoost + literacyPenalty + thresholdPenalty - experienceRelief + carryOver + noise,
+    12 +
+      triggerBoost +
+      literacyPenalty +
+      thresholdPenalty -
+      experienceRelief +
+      carryOver +
+      noise +
+      quitKeywordBoost +
+      axisBoost +
+      visualBoost,
     3,
     100
   )
@@ -237,13 +215,15 @@ export function mockSimulateStep(input: MockStepInput): Omit<StepResult, 'stepIn
   }
 
   const monologueParts: string[] = []
+  const style = persona.thinkingStyle
+  const mindset = style.mindsetBullets?.[0]?.trim()
+
   if (hits.length > 0) {
-    if (persona.custom) {
-      // Voice the custom persona through their own stated pain point.
-      const matchedPain = persona.painPoints.find((p) => hits.some((h) => h.pattern.test(p)))
+    if (persona.custom || persona.shared) {
+      const matchedTrigger = persona.frustrationTriggers.find((t) => hits.some((h) => h.pattern.test(t)))
       monologueParts.push(
-        matchedPain
-          ? `This screen is hitting one of my sore spots — ${matchedPain.replace(/\.$/, '').toLowerCase()}. I'm slowing down and re-reading everything before I commit to anything.`
+        matchedTrigger
+          ? `This screen is hitting one of my sore spots — ${matchedTrigger.replace(/\.$/, '').toLowerCase()}. I'm slowing down and re-reading everything before I commit to anything.`
           : hits[0].monologue(persona)
       )
     } else {
@@ -254,9 +234,21 @@ export function mockSimulateStep(input: MockStepInput): Omit<StepResult, 'stepIn
     const pool = BASELINE_MONOLOGUES[persona.id] ?? GENERIC_BASELINES
     monologueParts.push(pool[Math.floor(rand() * pool.length)])
   }
+
+  if (mindset && rand() > 0.45) {
+    monologueParts.push(`As a ${style.archetype}, ${mindset.replace(/\.$/, '').toLowerCase()}.`)
+  }
+  const firstTrigger = persona.frustrationTriggers[0]?.trim()
+  if (firstTrigger && hits.length > 0 && rand() > 0.5) {
+    monologueParts.push(`What trips me up is ${firstTrigger.replace(/\.$/, '').toLowerCase()}.`)
+  }
   if (!hasImage && rand() > 0.6) {
     monologueParts.push("(I'm picturing this screen from the description alone — show me the real layout and I'll be pickier.)")
   }
+
+  const uxIssues = hits.map((h) => h.issue)
+  const prefIssue = infoPreferenceIssue(persona, stepText)
+  if (prefIssue && !uxIssues.includes(prefIssue)) uxIssues.push(prefIssue)
 
   const simulatedStepsTaken =
     actionType === 'abandon'
@@ -276,7 +268,7 @@ export function mockSimulateStep(input: MockStepInput): Omit<StepResult, 'stepIn
     frustration,
     confidence: clamp(100 - frustration * 0.8 - (hasImage ? 0 : 6) + rand() * 10, 5, 98),
     simulatedStepsTaken,
-    uxIssues: hits.map((h) => h.issue),
+    uxIssues,
     succeeded: actionType !== 'abandon' && actionType !== 'backtrack',
   }
 }

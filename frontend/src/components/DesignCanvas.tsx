@@ -402,6 +402,17 @@ export function DesignCanvas({
                     className="min-h-[56px] resize-none text-sm"
                   />
 
+                  <Input
+                    value={step.expectedOutcome ?? ''}
+                    placeholder="Expected outcome (optional): what 'done' looks like — used to judge success"
+                    onChange={(e) => updateStep(step.id, { expectedOutcome: e.target.value })}
+                    onFocus={() => {
+                      focusedStepRef.current = step.id
+                    }}
+                    disabled={disabled}
+                    className="h-8 text-xs"
+                  />
+
                   {/* Visual Context Asset Slot */}
                   <input
                     ref={(node) => {

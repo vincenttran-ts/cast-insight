@@ -22,7 +22,9 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { SettingsDialog, GatewayStatusChip, GEMINI_MODELS } from '@/components/SettingsPanel'
-import { PersonaPanel } from '@/components/PersonaPanel'
+import { PersonaPicker } from '@/components/PersonaPicker'
+import { PersonaStudio } from '@/components/PersonaStudio'
+import { PersonaBriefingDialog } from '@/components/PersonaBriefingDialog'
 import { DesignCanvas } from '@/components/DesignCanvas'
 import { SimulatorFeed } from '@/components/SimulatorFeed'
 import { ReportDashboard } from '@/components/ReportDashboard'
@@ -31,12 +33,22 @@ import { RunComparison } from '@/components/RunComparison'
 import { useLocalStorage } from '@/hooks/useLocalStorage'
 import { useIdbState } from '@/hooks/useIdbState'
 import { useSimulation } from '@/hooks/useSimulation'
+import { useTeamPersonas } from '@/hooks/useTeamPersonas'
 import { PERSONAS, factoryPersona, DEFAULT_PERSONA_IDS } from '@/lib/personas'
+import {
+  forkPersona,
+  migratePersonasList,
+  normalizePersona,
+  REMOVED_BUILTIN_IDS,
+  reviveStoredPersonas,
+} from '@/lib/personaDefaults'
 import { FLOW_TEMPLATES } from '@/lib/templates'
 import { cn } from '@/lib/utils'
 import type { AppConfig, FlowStep, Persona, PersonaTraits, SavedFlow, SimulationRun } from '@/types'
 
 const SESSION_KEY_STORAGE = 'castinsight.geminiKey'
+
+type AppView = 'walkthrough' | 'personaStudio'
 
 export default function App() {
   /* ---------- theme ---------- */
@@ -59,24 +71,68 @@ export default function App() {
   const [mockMode, setMockMode] = useLocalStorage('castinsight.mockMode', true)
   const [settingsOpen, setSettingsOpen] = useState(false)
 
-  /* ---------- personas (built-in blueprints + team-created) ---------- */
-  const [personas, setPersonas] = useLocalStorage<Persona[]>('castinsight.personas', PERSONAS)
+  /* ---------- personas (session roster + team library) ---------- */
+  const defaultPersonas = useMemo(() => PERSONAS.map((p) => factoryPersona(p.id)!), [])
+  const [personas, setPersonas] = useLocalStorage<Persona[]>(
+    'castinsight.personas',
+    defaultPersonas,
+    (raw) => reviveStoredPersonas(raw, defaultPersonas)
+  )
   const [personaId, setPersonaId] = useLocalStorage('castinsight.personaId', PERSONAS[0].id)
-  const [traits, setTraits] = useLocalStorage<PersonaTraits>('castinsight.traits', { ...PERSONAS[0].traits })
 
-  // Keep the selection valid if the active persona was deleted.
+  const {
+    teamPersonas,
+    loading: teamLoading,
+    error: teamError,
+    lastFetchedAt: teamLastFetchedAt,
+    refresh: refreshTeam,
+    publish: publishTeamPersona,
+    remove: removeTeamPersona,
+  } = useTeamPersonas()
+
   useEffect(() => {
-    if (personas.length > 0 && !personas.some((p) => p.id === personaId)) {
-      setPersonaId(personas[0].id)
-      setTraits({ ...personas[0].traits })
-    }
-  }, [personas, personaId, setPersonaId, setTraits])
+    if (REMOVED_BUILTIN_IDS.includes(personaId)) setPersonaId(PERSONAS[0].id)
+  }, [personaId, setPersonaId])
+
+  // Keep the selection valid if the active persona was deleted from roster and team.
+  useEffect(() => {
+    const known = personas.some((p) => p.id === personaId) || teamPersonas.some((p) => p.id === personaId)
+    if (!known && personas.length > 0) setPersonaId(personas[0].id)
+  }, [personas, teamPersonas, personaId, setPersonaId])
 
   const savePersona = (persona: Persona) => {
+    const normalized = normalizePersona(persona)
     setPersonas((prev) => {
-      const exists = prev.some((p) => p.id === persona.id)
-      return exists ? prev.map((p) => (p.id === persona.id ? persona : p)) : [...prev, persona]
+      const exists = prev.some((p) => p.id === normalized.id)
+      return exists ? prev.map((p) => (p.id === normalized.id ? normalized : p)) : [...prev, normalized]
     })
+  }
+
+  const updatePersonaTraits = (id: string, traits: PersonaTraits) => {
+    const inRoster = personas.some((p) => p.id === id)
+    if (inRoster) {
+      setPersonas((prev) => prev.map((p) => (p.id === id ? { ...p, traits: { ...traits } } : p)))
+      return
+    }
+    const team = teamPersonas.find((p) => p.id === id)
+    if (team) addToRoster({ ...team, traits: { ...traits } })
+  }
+
+  const addToRoster = (persona: Persona) => {
+    const normalized = normalizePersona(persona)
+    setPersonas((prev) => {
+      if (prev.some((p) => p.id === normalized.id)) {
+        return prev.map((p) => (p.id === normalized.id ? normalized : p))
+      }
+      return [...prev, normalized]
+    })
+  }
+
+  const forkPersonaToRoster = (source: Persona): Persona => {
+    const copy = forkPersona(source)
+    savePersona(copy)
+    setPersonaId(copy.id)
+    return copy
   }
 
   const deletePersona = (id: string) => {
@@ -155,9 +211,15 @@ export default function App() {
   }, [run?.status, run?.batch])
 
   const persona = useMemo(() => {
-    const base = personas.find((p) => p.id === personaId) ?? personas[0] ?? PERSONAS[0]
-    return { ...base, traits: { ...traits } }
-  }, [personas, personaId, traits])
+    const fromRoster = personas.find((p) => p.id === personaId)
+    if (fromRoster) return normalizePersona(fromRoster)
+    const fromTeam = teamPersonas.find((p) => p.id === personaId)
+    if (fromTeam) return normalizePersona(fromTeam)
+    return normalizePersona(personas[0] ?? PERSONAS[0])
+  }, [personas, teamPersonas, personaId])
+
+  const [briefingOpen, setBriefingOpen] = useState(false)
+  const [pendingRun, setPendingRun] = useState<'single' | 'batch' | null>(null)
 
   const validSteps = steps.filter((s) => s.text.trim().length > 0)
   const canRun = validSteps.length > 0 && (mockMode || apiKey.trim().length > 0) && !running
@@ -179,19 +241,26 @@ export default function App() {
   }
 
   const handleRun = () => {
-    prepareRun()
-    void start({ persona, ...runOptions() })
+    setPendingRun('single')
+    setBriefingOpen(true)
   }
 
-  const handleBatchRun = async () => {
+  const handleBatchRun = () => {
+    setPendingRun('batch')
+    setBriefingOpen(true)
+  }
+
+  const executePendingRun = () => {
+    setBriefingOpen(false)
     prepareRun()
-    const finished = await startBatch(
-      personas.map((p) => (p.id === personaId ? persona : p)), // selected persona keeps its live trait overrides
-      runOptions()
-    )
-    if (finished.length >= 2) {
-      setCompareIds(finished.map((r) => r.id))
+    if (pendingRun === 'batch') {
+      void startBatch(personas, runOptions()).then((finished) => {
+        if (finished.length >= 2) setCompareIds(finished.map((r) => r.id))
+      })
+    } else {
+      void start({ persona, ...runOptions() })
     }
+    setPendingRun(null)
   }
 
   /** One-click on-ramp: load the self-tape template + actor blueprint in sandbox mode and run it. */
@@ -201,7 +270,7 @@ export default function App() {
     const demoSteps: FlowStep[] = tpl.steps.map((s, i) => ({ ...s, id: `demo-${Date.now()}-${i}` }))
 
     setPersonaId(demoPersona.id)
-    setTraits({ ...demoPersona.traits })
+    savePersona(demoPersona)
     setMockMode(true)
     setFlowName(tpl.name)
     setTaskGoal(tpl.taskGoal)
@@ -222,11 +291,25 @@ export default function App() {
   /* ---------- full-width report mode ---------- */
   const [expanded, setExpanded] = useState(false)
 
+  /* ---------- persona studio view mode ---------- */
+  const [view, setView] = useState<AppView>('walkthrough')
+  const [studioPersonaId, setStudioPersonaId] = useState<string | null>(null)
+
+  const openPersonaStudio = (personaIdOverride?: string) => {
+    setStudioPersonaId(personaIdOverride ?? personaId)
+    setView('personaStudio')
+  }
+
+  const closePersonaStudio = () => {
+    setView('walkthrough')
+    setStudioPersonaId(null)
+  }
+
   /* ---------- config import / export ---------- */
   const importInput = useRef<HTMLInputElement>(null)
 
   const exportConfig = () => {
-    const config: AppConfig = { personaId, traits, flowName, taskGoal, steps, model, mockMode, personas, savedFlows }
+    const config: AppConfig = { personaId, flowName, taskGoal, steps, model, mockMode, personas, savedFlows }
     const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -241,12 +324,13 @@ export default function App() {
     reader.onload = () => {
       try {
         const config = JSON.parse(String(reader.result)) as Partial<AppConfig>
-        const roster = Array.isArray(config.personas) && config.personas.length > 0 ? config.personas : null
+        const roster = Array.isArray(config.personas) && config.personas.length > 0
+          ? migratePersonasList(config.personas, config.traits, config.personaId)
+          : null
         if (roster) setPersonas(roster)
         if (Array.isArray(config.savedFlows)) setSavedFlows(config.savedFlows)
         const knownIds = (roster ?? personas).map((p) => p.id)
         if (config.personaId && knownIds.includes(config.personaId)) setPersonaId(config.personaId)
-        if (config.traits) setTraits(config.traits)
         if (typeof config.flowName === 'string') setFlowName(config.flowName)
         if (typeof config.taskGoal === 'string') setTaskGoal(config.taskGoal)
         if (Array.isArray(config.steps)) setSteps(config.steps)
@@ -289,6 +373,16 @@ export default function App() {
             mockMode={mockMode}
             onMockModeChange={setMockMode}
           />
+
+          <Button
+            variant={view === 'personaStudio' ? 'secondary' : 'ghost'}
+            size="sm"
+            className="hidden sm:flex"
+            onClick={() => (view === 'personaStudio' ? closePersonaStudio() : openPersonaStudio())}
+          >
+            <Users className="h-4 w-4" />
+            {view === 'personaStudio' ? 'Walkthrough' : 'Personas'}
+          </Button>
 
           <input
             ref={importInput}
@@ -354,7 +448,7 @@ export default function App() {
                     <Play />
                     Run selected persona
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => void handleBatchRun()}>
+                  <DropdownMenuItem onClick={handleBatchRun}>
                     <Users />
                     Run all personas ({personas.length})
                   </DropdownMenuItem>
@@ -365,7 +459,28 @@ export default function App() {
         </div>
       </header>
 
-      {/* 3-column workspace: who → what → results (collapsible to full-width results) */}
+      {view === 'personaStudio' ? (
+        <PersonaStudio
+          roster={personas}
+          teamPersonas={teamPersonas}
+          teamLoading={teamLoading}
+          teamError={teamError}
+          teamLastFetchedAt={teamLastFetchedAt}
+          onRefreshTeam={() => void refreshTeam()}
+          initialPersonaId={studioPersonaId}
+          activePersonaId={personaId}
+          onBack={closePersonaStudio}
+          onPersonaChange={setPersonaId}
+          onSavePersona={savePersona}
+          onDeletePersona={deletePersona}
+          onForkPersona={forkPersonaToRoster}
+          onPublishPersona={async (p, author) => {
+            const saved = await publishTeamPersona(p, author)
+            savePersona(normalizePersona({ ...saved, shared: true }))
+          }}
+          onDeleteTeamPersona={removeTeamPersona}
+        />
+      ) : (
       <main
         className={cn(
           'mx-auto grid max-w-[1800px] items-start gap-5 px-5 py-5',
@@ -374,15 +489,19 @@ export default function App() {
       >
         <section aria-label="Persona" className={cn(expanded && 'hidden')}>
           <ColumnHeading step={1} title="Pick the persona" />
-          <PersonaPanel
-            personas={personas}
+          <PersonaPicker
+            roster={personas}
+            teamPersonas={teamPersonas}
+            teamLoading={teamLoading}
+            teamError={teamError}
+            teamLastFetchedAt={teamLastFetchedAt}
+            onRefreshTeam={() => void refreshTeam()}
             personaId={personaId}
             onPersonaChange={setPersonaId}
-            traits={traits}
-            onTraitsChange={setTraits}
-            onSavePersona={savePersona}
-            onDeletePersona={deletePersona}
+            onPersonaTraitsChange={updatePersonaTraits}
+            onAddToRoster={addToRoster}
             onResetDefaults={resetDefaultPersonas}
+            onOpenStudio={openPersonaStudio}
           />
         </section>
 
@@ -461,6 +580,19 @@ export default function App() {
           )}
         </section>
       </main>
+      )}
+
+      <PersonaBriefingDialog
+        persona={persona}
+        open={briefingOpen}
+        onOpenChange={setBriefingOpen}
+        onConfirm={executePendingRun}
+        batchCount={pendingRun === 'batch' ? personas.length : undefined}
+        onEditInStudio={() => {
+          setBriefingOpen(false)
+          openPersonaStudio(persona.id)
+        }}
+      />
     </div>
   )
 }

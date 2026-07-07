@@ -189,6 +189,16 @@ function FeedEntry({ result }: { result: StepResult }) {
             <p className="text-sm italic leading-relaxed text-foreground/90">“{result.innerMonologue}”</p>
           </div>
 
+          {result.observedElements && (
+            <div>
+              <p className="mb-1.5 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                <Eye className="h-3 w-3" />
+                Observed On Screen
+              </p>
+              <p className="text-xs leading-relaxed text-muted-foreground">{result.observedElements}</p>
+            </div>
+          )}
+
           {/* Action Taken */}
           <div>
             <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">

@@ -67,6 +67,7 @@ export function useSimulation(onRunFinished?: (run: SimulationRun) => void) {
         personaRole: persona.role,
         personaColor: persona.color,
         traits: { ...persona.traits },
+        thinkingStyle: persona.thinkingStyle ? { ...persona.thinkingStyle } : undefined,
         batch,
         flowName,
         taskGoal,
@@ -115,6 +116,7 @@ export function useSimulation(onRunFinished?: (run: SimulationRun) => void) {
               stepIndex: i,
               totalSteps: steps.length,
               taskGoal,
+              expectedOutcome: step.expectedOutcome,
               priorContext: results.map((r) => ({
                 action: r.action,
                 frustration: r.frustration,

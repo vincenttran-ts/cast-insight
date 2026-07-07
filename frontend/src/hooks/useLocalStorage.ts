@@ -5,11 +5,13 @@ import { useEffect, useRef, useState } from 'react'
  * quota overflow (e.g. very large base64 screenshots) degrades to in-memory
  * state instead of crashing the workspace.
  */
-export function useLocalStorage<T>(key: string, initialValue: T) {
+export function useLocalStorage<T>(key: string, initialValue: T, revive?: (value: T) => T) {
   const [value, setValue] = useState<T>(() => {
     try {
       const raw = window.localStorage.getItem(key)
-      return raw !== null ? (JSON.parse(raw) as T) : initialValue
+      if (raw === null) return initialValue
+      const parsed = JSON.parse(raw) as T
+      return revive ? revive(parsed) : parsed
     } catch {
       return initialValue
     }
