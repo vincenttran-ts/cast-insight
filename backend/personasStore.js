@@ -8,6 +8,22 @@ const path = require('path');
 const BLOB_PATH = 'castinsight/team-personas.json';
 const LOCAL_PATH = path.join(__dirname, 'data', 'team-personas.json');
 
+// Vercel functions run on a read-only filesystem and don't ship backend/data
+// (it's gitignored), so the local-file fallback only exists in local dev.
+const ON_VERCEL = Boolean(process.env.VERCEL);
+
+/** Thrown when production has no Blob store to keep the team library in. */
+class StorageNotConfiguredError extends Error {
+  constructor() {
+    super(
+      'Team library storage isn\'t configured for this deployment. Connect a public Vercel Blob store ' +
+        'to the project (Vercel → Storage), which sets BLOB_READ_WRITE_TOKEN, then redeploy.'
+    );
+    this.name = 'StorageNotConfiguredError';
+    this.code = 'STORAGE_NOT_CONFIGURED';
+  }
+}
+
 const COGNITIVE_AXES = new Set(['analytical', 'divergent', 'systemic', 'risk_averse']);
 const INFO_PREFS = new Set(['raw_data', 'narrative']);
 
@@ -38,6 +54,12 @@ async function readFromBlob() {
   if (!match) return [];
 
   const res = await fetch(match.url);
+  if (res.status === 401 || res.status === 403) {
+    throw new Error(
+      `Blob read was refused (${res.status}). The Blob store is probably private — the team library ` +
+        'needs a public store.'
+    );
+  }
   if (!res.ok) throw new Error(`Blob read failed (${res.status})`);
   const data = await res.json();
   return Array.isArray(data.personas) ? data.personas : [];
@@ -59,7 +81,7 @@ async function writeToBlob(personas) {
 }
 
 function readLocal() {
-  ensureLocalDir();
+  // No mkdir here: reading must never write (the folder is created on first save).
   if (!fs.existsSync(LOCAL_PATH)) return [];
   try {
     const data = JSON.parse(fs.readFileSync(LOCAL_PATH, 'utf8'));
@@ -83,14 +105,19 @@ async function readTeamPersonas() {
     const blob = await readFromBlob();
     if (blob !== null) return blob;
   } catch (err) {
+    // On Vercel there's no local file to fall back to — surface the real cause.
+    if (ON_VERCEL) throw err;
     console.warn('[personas] Blob read failed, falling back to local file:', err.message || err);
   }
+  if (ON_VERCEL) throw new StorageNotConfiguredError();
   return readLocal();
 }
 
 async function writeTeamPersonas(personas) {
   const wrote = await writeToBlob(personas);
-  if (!wrote) writeLocal(personas);
+  if (wrote) return;
+  if (ON_VERCEL) throw new StorageNotConfiguredError();
+  writeLocal(personas);
 }
 
 function splitToBullets(text) {
@@ -407,6 +434,7 @@ function clampTrait(value, fallback) {
 }
 
 module.exports = {
+  StorageNotConfiguredError,
   readTeamPersonas,
   writeTeamPersonas,
   validatePersonaPayload,

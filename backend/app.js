@@ -190,13 +190,26 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true, service: 'castinsight-backend', time: new Date().toISOString() });
 });
 
+/**
+ * Shared error reply for the team-library routes: log the full error, return
+ * 503 + setup guidance when storage isn't configured, otherwise a 500 that
+ * still says what went wrong.
+ */
+function sendPersonaStorageError(res, label, fallback, err) {
+  console.error(`[personas ${label}]`, err?.stack || err?.message || err);
+  if (err?.code === 'STORAGE_NOT_CONFIGURED') {
+    return res.status(503).json({ error: err.message, code: err.code });
+  }
+  const reason = String(err?.message || err || '').slice(0, 200);
+  res.status(500).json({ error: reason ? `${fallback} (${reason})` : fallback });
+}
+
 app.get('/api/personas', async (_req, res) => {
   try {
     const personas = await readTeamPersonas();
     res.json({ personas });
   } catch (err) {
-    console.error('[personas GET]', err.message || err);
-    res.status(500).json({ error: 'Failed to load team personas.' });
+    sendPersonaStorageError(res, 'GET', 'Failed to load team personas.', err);
   }
 });
 
@@ -214,8 +227,7 @@ app.post('/api/personas', async (req, res) => {
     await writeTeamPersonas(list);
     res.json({ persona });
   } catch (err) {
-    console.error('[personas POST]', err.message || err);
-    res.status(500).json({ error: 'Failed to save persona to team library.' });
+    sendPersonaStorageError(res, 'POST', 'Failed to save persona to team library.', err);
   }
 });
 
@@ -237,8 +249,7 @@ app.put('/api/personas/:id', async (req, res) => {
     await writeTeamPersonas(list);
     res.json({ persona });
   } catch (err) {
-    console.error('[personas PUT]', err.message || err);
-    res.status(500).json({ error: 'Failed to update persona.' });
+    sendPersonaStorageError(res, 'PUT', 'Failed to update persona.', err);
   }
 });
 
@@ -251,8 +262,7 @@ app.delete('/api/personas/:id', async (req, res) => {
     await writeTeamPersonas(next);
     res.json({ ok: true });
   } catch (err) {
-    console.error('[personas DELETE]', err.message || err);
-    res.status(500).json({ error: 'Failed to delete persona.' });
+    sendPersonaStorageError(res, 'DELETE', 'Failed to delete persona.', err);
   }
 });
 
