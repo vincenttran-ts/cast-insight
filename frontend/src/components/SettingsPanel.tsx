@@ -33,19 +33,26 @@ import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
 import { validateKey } from '@/lib/api'
 
-// Current Gemini lineup for new AI Studio keys (Oct 2026). First entry is the default.
+// Stable Gemini models that work with new AI Studio "AQ." keys (Oct 2026) —
+// Google's recommended picks for new projects. First entry is the default.
+// Preview/Pro models are left out: they aren't guaranteed for every key and
+// may need billing on the key's project. Use "Custom model…" to try one.
 export const GEMINI_MODELS = [
   { id: 'gemini-3.8-flash', label: 'gemini-3.8-flash', hint: 'Recommended — best quality per run' },
   { id: 'gemini-3.5-flash-lite', label: 'gemini-3.5-flash-lite', hint: 'Fastest, lightest on quota' },
-  { id: 'gemini-3.1-pro-preview', label: 'gemini-3.1-pro-preview', hint: 'Deepest analysis (preview, may need billing)' },
 ]
+
+// Briefly offered in the dropdown; saved selections move back to the default.
+const REMOVED_MODEL_IDS = new Set(['gemini-3.1-pro-preview'])
 
 /**
  * Gemini 1.x/2.0 are shut down and 2.5 is closed to new keys (retiring
- * 2026-10-20). Saved settings pointing at these get moved to the default.
+ * 2026-10-20). Saved settings pointing at these (or at a model we dropped
+ * from the dropdown) get moved to the default.
  */
 export function isRetiredModel(id: string): boolean {
-  return /^gemini-(1\.|2\.0|2\.5)/i.test(id.trim())
+  const model = id.trim()
+  return /^gemini-(1\.|2\.0|2\.5)/i.test(model) || REMOVED_MODEL_IDS.has(model)
 }
 
 const CUSTOM_MODEL = '__custom__'

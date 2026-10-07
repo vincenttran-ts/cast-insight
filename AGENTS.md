@@ -30,7 +30,11 @@ npm run dev            # backend :3001 + frontend :5173 together
 
 Full-stack monorepo, no shared package.
 
-### `/backend` — Express Gemini gateway (`backend/server.js`, single file)
+### `/backend` — Express Gemini gateway
+- `app.js` holds all routes and is shared by two entry points: `server.js`
+  (local, listens on :3001) and `../api/index.js` (the Vercel serverless function).
+  `personasStore.js` is the team-persona storage layer (see
+  [Deployment & team library storage](#deployment--team-library-storage)).
 - Reads the designer's Gemini key from the **`x-gemini-api-key` request header**
   on every call; never persists it. The frontend holds the key in
   `sessionStorage` only.
@@ -108,6 +112,79 @@ src/
 - **Efficiency metric honesty:** abandoned runs report `attempted/planned steps`
   and mark the attrition step — don't revert this to a plain step count.
 
+## Deployment & team library storage
+
+### Vercel deploys
+- Vercel project **`castinsight`** (linked in `.vercel/project.json`), deployed via
+  the GitHub integration on `vincenttran-ts/cast-insight`.
+- Push to **`master` → production** at https://castinsight.vercel.app. Any other
+  branch gets a preview deployment, which is behind Vercel Authentication.
+- `vercel.json` builds the frontend into `frontend/dist` and routes `/api/*` to the
+  single function `api/index.js` (`maxDuration: 300`).
+- Environment variables only apply to deployments built **after** they're set.
+  After changing one, redeploy (push, or `npx vercel redeploy`).
+
+### Where team personas live
+`backend/personasStore.js` picks the backend per request:
+
+| Environment | `BLOB_READ_WRITE_TOKEN` | Storage used |
+|---|---|---|
+| Vercel (prod/preview) | set | Vercel Blob — `castinsight/team-personas.json` |
+| Vercel (prod/preview) | **missing** | none: routes return **503** `STORAGE_NOT_CONFIGURED` with setup steps |
+| Local dev | not loaded (default) | `backend/data/team-personas.json` (gitignored, per-machine) |
+
+- On Vercel there is **no local-file fallback**: the filesystem is read-only and
+  `backend/data/` isn't deployed. Don't reintroduce writes or `mkdir` on the read
+  path — that's what made the library 500 in production.
+- The persona routes (`GET/POST /api/personas`, `PUT/DELETE /api/personas/:id`)
+  share `sendPersonaStorageError()` in `app.js`, which logs the full error and
+  returns the reason to the UI.
+
+### The Blob store
+- Store **`castinsight-team-library`** (`store_oOWagrGOSGxmxUx7`), region `iad1`,
+  **public access**, connected to production, preview, and development.
+- It **must be public**: writes use `put(..., { access: 'public' })` and reads
+  `fetch()` the blob URL with no auth. A private store fails both (reads surface
+  as a 401/403 "store is probably private" error).
+- **Production and preview share the one store.** A persona saved from a preview
+  deployment shows up in production immediately.
+- The token also lives in `.env.local` (written by the Vercel CLI). `.env*` is
+  gitignored — never commit it. `server.js` does **not** load `.env.local`, so
+  local dev keeps using the per-machine file unless you opt in:
+
+  ```bash
+  set -a && . ./.env.local && set +a && npm run dev   # local dev against Blob
+  ```
+
+  That reads and writes the **shared production store** — use with care.
+
+### Recreating or checking the store (Vercel CLI, via npx)
+
+```bash
+npx vercel whoami                      # must be the castinsight team account
+npx vercel blob list-stores --all      # stores on the team + which project uses them
+npx vercel env ls                      # expect BLOB_READ_WRITE_TOKEN in all 3 envs
+
+# Create + link a public store (adds the token to all envs, writes .env.local):
+npx vercel blob create-store castinsight-team-library --access public --region iad1 --yes
+# then redeploy so production picks up the token
+```
+
+Verify production: `curl https://castinsight.vercel.app/api/personas` should
+return `200` with `{ "personas": [...] }`. A `503` means the token is missing
+from the deployment; a `500` includes the underlying Blob error.
+
+To copy a machine's local personas into an **empty** store (no-op if it already
+has personas):
+
+```bash
+set -a && . ./.env.local && set +a && VERCEL=1 node -e "
+const s=require('./backend/personasStore.js');(async()=>{
+const local=JSON.parse(require('fs').readFileSync('backend/data/team-personas.json','utf8')).personas;
+if((await s.readTeamPersonas()).length) return console.log('store not empty — skipped');
+await s.writeTeamPersonas(local);console.log('uploaded',local.length)})()"
+```
+
 ## Conventions
 
 - TypeScript strict; path alias `@/` → `src/`.
@@ -124,3 +201,9 @@ src/
   so the backend must be running for live (non-mock) simulations.
 - Gemini model ids live in `GEMINI_MODELS` (SettingsPanel) but `model` is a free
   string end-to-end, so a custom model id flows through untouched.
+- **Only offer models that work with new AI Studio keys.** Since 2026, keys
+  start with `AQ.`, older `AIza` keys are rejected, and Gemini 2.5 and older are
+  closed to new keys. The dropdown is `gemini-3.8-flash` (default) and
+  `gemini-3.5-flash-lite`. The backend's `resolveModel()` and the frontend's
+  `isRetiredModel()` move retired ids to the default — keep them in sync when the
+  lineup changes.
