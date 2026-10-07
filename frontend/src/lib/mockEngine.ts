@@ -1,4 +1,4 @@
-import type { ActionType, Persona, StepResult } from '@/types'
+import type { ActionType, Persona, StepResult, UxIssue } from '@/types'
 import { personaContextText } from '@/lib/personaDefaults'
 
 /**
@@ -246,9 +246,11 @@ export function mockSimulateStep(input: MockStepInput): Omit<StepResult, 'stepIn
     monologueParts.push("(I'm picturing this screen from the description alone — show me the real layout and I'll be pickier.)")
   }
 
-  const uxIssues = hits.map((h) => h.issue)
+  const uxIssues: UxIssue[] = hits.map((h) => ({ scope: 'interaction', issue: h.issue }))
   const prefIssue = infoPreferenceIssue(persona, stepText)
-  if (prefIssue && !uxIssues.includes(prefIssue)) uxIssues.push(prefIssue)
+  if (prefIssue && !uxIssues.some((i) => i.issue === prefIssue)) {
+    uxIssues.push({ scope: 'feedback', issue: prefIssue })
+  }
 
   const simulatedStepsTaken =
     actionType === 'abandon'

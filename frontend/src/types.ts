@@ -75,6 +75,12 @@ export interface Persona {
   walkthroughBehavior?: WalkthroughBehavior
 }
 
+export interface PersonaGenerateInput {
+  who: string
+  task: string
+  constraints?: string
+}
+
 export interface StepImage {
   /** base64 data URL or raw base64 */
   data: string
@@ -88,6 +94,15 @@ export interface FlowStep {
   image?: StepImage
   /** what "done" looks like for this step; used to judge `succeeded` accurately */
   expectedOutcome?: string
+  /** designer steering: what to focus on or ignore for this staging screen */
+  designNotes?: string
+}
+
+export type UxIssueScope = 'structure' | 'interaction' | 'feedback' | 'accessibility' | 'content'
+
+export interface UxIssue {
+  scope: UxIssueScope
+  issue: string
 }
 
 export type ActionType =
@@ -110,7 +125,7 @@ export interface StepResult {
   frustration: number
   confidence: number
   simulatedStepsTaken: number
-  uxIssues: string[]
+  uxIssues: UxIssue[]
   succeeded: boolean
   /** data URL preview of the screenshot evaluated for this step */
   imagePreview?: string
@@ -154,6 +169,7 @@ export interface SavedFlow {
   id: string
   name: string
   taskGoal: string
+  evaluationBrief?: string
   steps: FlowStep[]
   savedAt: string
 }
@@ -164,6 +180,8 @@ export interface AppConfig {
   traits?: PersonaTraits
   flowName: string
   taskGoal: string
+  /** designer steering: narrows evaluation focus beyond default staging rules */
+  evaluationBrief?: string
   steps: FlowStep[]
   model: string
   mockMode: boolean

@@ -33,10 +33,20 @@ import { Separator } from '@/components/ui/separator'
 import { cn } from '@/lib/utils'
 import { validateKey } from '@/lib/api'
 
+// Current Gemini lineup for new AI Studio keys (Oct 2026). First entry is the default.
 export const GEMINI_MODELS = [
-  { id: 'gemini-2.5-flash', label: 'gemini-2.5-flash', hint: 'Fast iterations' },
-  { id: 'gemini-1.5-pro', label: 'gemini-1.5-pro', hint: 'Deep cognitive analysis' },
+  { id: 'gemini-3.8-flash', label: 'gemini-3.8-flash', hint: 'Recommended — best quality per run' },
+  { id: 'gemini-3.5-flash-lite', label: 'gemini-3.5-flash-lite', hint: 'Fastest, lightest on quota' },
+  { id: 'gemini-3.1-pro-preview', label: 'gemini-3.1-pro-preview', hint: 'Deepest analysis (preview, may need billing)' },
 ]
+
+/**
+ * Gemini 1.x/2.0 are shut down and 2.5 is closed to new keys (retiring
+ * 2026-10-20). Saved settings pointing at these get moved to the default.
+ */
+export function isRetiredModel(id: string): boolean {
+  return /^gemini-(1\.|2\.0|2\.5)/i.test(id.trim())
+}
 
 const CUSTOM_MODEL = '__custom__'
 
@@ -171,7 +181,7 @@ export function SettingsDialog({
                   <Input
                     id="gemini-key"
                     type={showKey ? 'text' : 'password'}
-                    placeholder="AIza…"
+                    placeholder="AQ.…"
                     value={apiKey}
                     autoComplete="off"
                     spellCheck={false}
@@ -216,6 +226,48 @@ export function SettingsDialog({
                 Held in this browser session only and sent per-request via a secure header to the local
                 proxy — never stored server-side.
               </p>
+              <div className="rounded-md border border-dashed bg-muted/30 p-3 text-xs text-muted-foreground">
+                <p className="font-medium text-foreground">Work Gemini vs. API access</p>
+                <p className="mt-1.5 leading-relaxed">
+                  Gemini in Google Workspace (Gmail, Docs, etc.) is separate from the API key used here.
+                  Limits depend on the Google Cloud project behind your key, not your work chat license.
+                </p>
+                <ul className="mt-2 list-inside list-disc space-y-1">
+                  <li>
+                    New AI Studio keys start with <span className="font-mono">AQ.</span> — older{' '}
+                    <span className="font-mono">AIza</span> keys are no longer accepted by the Gemini API.
+                  </li>
+                  <li>
+                    New keys can't use Gemini 2.5 or older; stick to the 3.x models below.
+                  </li>
+                  <li>
+                    Free-tier keys hit low rate limits quickly during walkthroughs (one call per step).
+                  </li>
+                  <li>
+                    For team usage, create a key from a billed org GCP project with the Generative Language
+                    API enabled.
+                  </li>
+                </ul>
+                <p className="mt-2">
+                  <a
+                    href="https://aistudio.google.com/apikey"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary underline-offset-2 hover:underline"
+                  >
+                    Manage API keys
+                  </a>
+                  {' · '}
+                  <a
+                    href="https://aistudio.google.com/rate-limit"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary underline-offset-2 hover:underline"
+                  >
+                    Check rate limits
+                  </a>
+                </p>
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -248,7 +300,7 @@ export function SettingsDialog({
               </Select>
               {customModel && (
                 <Input
-                  placeholder="e.g. gemini-2.5-pro"
+                  placeholder="e.g. gemini-3.7-flash"
                   value={model}
                   spellCheck={false}
                   onChange={(e) => onModelChange(e.target.value)}

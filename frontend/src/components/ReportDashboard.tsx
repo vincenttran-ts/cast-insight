@@ -39,6 +39,7 @@ import {
   totalSimulatedSteps,
 } from '@/lib/metrics'
 import { downloadStandaloneReport } from '@/lib/reportExport'
+import { UX_ISSUE_SCOPE_LABELS } from '@/lib/uxIssues'
 import type { SimulationRun } from '@/types'
 
 interface ReportDashboardProps {
@@ -263,7 +264,8 @@ export function ReportDashboard({ run, isHistorical }: ReportDashboardProps) {
                 Flagged UX Issues ({issues.length})
               </CardTitle>
               <CardDescription className="mt-1.5">
-                Actionable findings surfaced by the persona, ordered by flow step.
+                Product-design findings (structure, interaction, feedback). Content-scope seed-data nitpicks are
+                excluded.
               </CardDescription>
             </div>
             {issues.length > 0 && <CopyIssuesButton run={run} />}
@@ -276,11 +278,16 @@ export function ReportDashboard({ run, isHistorical }: ReportDashboardProps) {
             </p>
           ) : (
             <ul className="space-y-2">
-              {issues.map(({ step, issue }, i) => (
+              {issues.map(({ step, issue, scope }, i) => (
                 <li key={`${step}-${i}`} className="flex items-start gap-2.5 rounded-md border bg-muted/20 p-2.5 text-sm">
                   <Badge variant="outline" className="mt-0.5 shrink-0 rounded-md font-mono text-[10px]">
                     S{step}
                   </Badge>
+                  {scope && (
+                    <Badge variant="secondary" className="mt-0.5 shrink-0 text-[9px] font-normal">
+                      {UX_ISSUE_SCOPE_LABELS[scope]}
+                    </Badge>
+                  )}
                   <span className="leading-snug">{issue}</span>
                   <AlertTriangle className="ml-auto mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
                 </li>
@@ -297,8 +304,9 @@ function CopyIssuesButton({ run }: { run: SimulationRun }) {
   const [copied, setCopied] = useState(false)
 
   const copy = async () => {
-    const lines = run.results.flatMap((r) =>
-      r.uxIssues.map((issue) => `- [S${r.stepIndex + 1}] ${issue} (frustration ${r.frustration}/100)`)
+    const lines = collectUxIssues(run).map(
+      ({ step, issue, scope }) =>
+        `- [S${step}${scope ? ` · ${UX_ISSUE_SCOPE_LABELS[scope]}` : ''}] ${issue}`
     )
     const md = [`## UX Issues — ${run.flowName} (${run.personaRole})`, '', ...lines].join('\n')
     try {

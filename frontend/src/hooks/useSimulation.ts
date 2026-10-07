@@ -2,12 +2,14 @@ import { useCallback, useRef, useState } from 'react'
 import type { FlowStep, Persona, SimulationRun, StepResult } from '@/types'
 import { simulateStep } from '@/lib/api'
 import { mockSimulateStep } from '@/lib/mockEngine'
+import { normalizeUxIssues } from '@/lib/uxIssues'
 
 export interface RunOptions {
   persona: Persona
   steps: FlowStep[]
   flowName: string
   taskGoal: string
+  evaluationBrief?: string
   model: string
   mockMode: boolean
   apiKey: string
@@ -56,7 +58,7 @@ export function useSimulation(onRunFinished?: (run: SimulationRun) => void) {
 
   const runOnce = useCallback(
     async (opts: RunOptions, batch?: { index: number; total: number }): Promise<SimulationRun | null> => {
-      const { persona, steps, flowName, taskGoal, model, mockMode, apiKey } = opts
+      const { persona, steps, flowName, taskGoal, evaluationBrief, model, mockMode, apiKey } = opts
       abortRef.current = false
 
       const baseRun: SimulationRun = {
@@ -107,6 +109,7 @@ export function useSimulation(onRunFinished?: (run: SimulationRun) => void) {
               priorFrustration: results.length ? results[results.length - 1].frustration : 0,
               hasImage: Boolean(step.image),
             })
+            outcome = { ...outcome, uxIssues: normalizeUxIssues(outcome.uxIssues) }
           } else {
             outcome = await simulateStep({
               apiKey,
@@ -116,7 +119,9 @@ export function useSimulation(onRunFinished?: (run: SimulationRun) => void) {
               stepIndex: i,
               totalSteps: steps.length,
               taskGoal,
+              evaluationBrief,
               expectedOutcome: step.expectedOutcome,
+              designNotes: step.designNotes,
               priorContext: results.map((r) => ({
                 action: r.action,
                 frustration: r.frustration,
@@ -130,6 +135,7 @@ export function useSimulation(onRunFinished?: (run: SimulationRun) => void) {
 
           const result: StepResult = {
             ...outcome,
+            uxIssues: normalizeUxIssues(outcome.uxIssues),
             stepIndex: i,
             stepText: step.text,
             imagePreview,

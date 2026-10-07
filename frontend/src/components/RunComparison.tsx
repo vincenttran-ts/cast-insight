@@ -16,6 +16,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
+import { formatUxIssue, isProductDesignIssue, normalizeUxIssues } from '@/lib/uxIssues'
 import { computeSus, totalSimulatedSteps } from '@/lib/metrics'
 import { PERSONA_COLORS } from '@/lib/personas'
 import type { SimulationRun } from '@/types'
@@ -66,7 +67,15 @@ export function RunComparison({ runs, onClose }: RunComparisonProps) {
   }))
 
   // Issue diff: shared (appearing in 2+ runs) vs unique per run
-  const issueSets = runs.map((r) => new Set(r.results.flatMap((res) => res.uxIssues)))
+  const issueSets = runs.map((r) =>
+    new Set(
+      r.results.flatMap((res) =>
+        normalizeUxIssues(res.uxIssues)
+          .filter(isProductDesignIssue)
+          .map(formatUxIssue)
+      )
+    )
+  )
   const allIssues = [...new Set(issueSets.flatMap((s) => [...s]))]
   const sharedIssues = allIssues.filter((i) => issueSets.filter((s) => s.has(i)).length >= 2)
   const uniqueIssues = runs.map((_, ri) =>

@@ -47,6 +47,8 @@ interface DesignCanvasProps {
   onFlowNameChange: (name: string) => void
   taskGoal: string
   onTaskGoalChange: (goal: string) => void
+  evaluationBrief: string
+  onEvaluationBriefChange: (brief: string) => void
   steps: FlowStep[]
   onStepsChange: (steps: FlowStep[]) => void
   savedFlows: SavedFlow[]
@@ -67,6 +69,8 @@ export function DesignCanvas({
   onFlowNameChange,
   taskGoal,
   onTaskGoalChange,
+  evaluationBrief,
+  onEvaluationBriefChange,
   steps,
   onStepsChange,
   savedFlows,
@@ -92,6 +96,7 @@ export function DesignCanvas({
     if (tpl) {
       onFlowNameChange(tpl.name)
       onTaskGoalChange(tpl.taskGoal)
+      onEvaluationBriefChange(tpl.evaluationBrief ?? '')
       onStepsChange(tpl.steps.map((s) => ({ ...s, id: newStepId() })))
       setLibraryId(id)
       return
@@ -100,6 +105,7 @@ export function DesignCanvas({
     if (saved) {
       onFlowNameChange(saved.name)
       onTaskGoalChange(saved.taskGoal)
+      onEvaluationBriefChange(saved.evaluationBrief ?? '')
       onStepsChange(saved.steps.map((s) => ({ ...s, id: newStepId() })))
       setLibraryId(id)
     }
@@ -304,6 +310,23 @@ export function DesignCanvas({
           />
         </div>
 
+        <div className="space-y-2">
+          <Label htmlFor="evaluation-brief">Evaluation focus (optional)</Label>
+          <Textarea
+            id="evaluation-brief"
+            value={evaluationBrief}
+            placeholder="e.g. Focus on submission confirmation UX; ignore roster table contents"
+            onChange={(e) => onEvaluationBriefChange(e.target.value)}
+            disabled={disabled}
+            rows={2}
+            className="text-sm"
+          />
+          <p className="text-[10px] text-muted-foreground">
+            Staging seed data is ignored by default. Use this to narrow attention to specific UI areas or
+            interaction patterns.
+          </p>
+        </div>
+
         <div
           className="space-y-3"
           onDragOver={(e) => {
@@ -406,6 +429,17 @@ export function DesignCanvas({
                     value={step.expectedOutcome ?? ''}
                     placeholder="Expected outcome (optional): what 'done' looks like — used to judge success"
                     onChange={(e) => updateStep(step.id, { expectedOutcome: e.target.value })}
+                    onFocus={() => {
+                      focusedStepRef.current = step.id
+                    }}
+                    disabled={disabled}
+                    className="h-8 text-xs"
+                  />
+
+                  <Input
+                    value={step.designNotes ?? ''}
+                    placeholder="Design notes (optional): focus areas or staging context for this screen"
+                    onChange={(e) => updateStep(step.id, { designNotes: e.target.value })}
                     onFocus={() => {
                       focusedStepRef.current = step.id
                     }}

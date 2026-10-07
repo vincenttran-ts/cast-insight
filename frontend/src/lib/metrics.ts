@@ -1,4 +1,5 @@
-import type { SimulationRun, StepResult, SusReport } from '@/types'
+import type { SimulationRun, StepResult, SusReport, UxIssue } from '@/types'
+import { collectProductDesignIssues, formatUxIssue, normalizeUxIssues } from '@/lib/uxIssues'
 
 /**
  * Analytics math for the report dashboard and the standalone export.
@@ -115,6 +116,21 @@ export function abandonStep(results: StepResult[]): number | null {
   return hit ? hit.stepIndex + 1 : null
 }
 
-export function collectUxIssues(run: SimulationRun): { step: number; issue: string }[] {
-  return run.results.flatMap((r) => r.uxIssues.map((issue) => ({ step: r.stepIndex + 1, issue })))
+export function collectUxIssues(run: SimulationRun): { step: number; issue: string; scope?: UxIssue['scope'] }[] {
+  return collectProductDesignIssues(run).map(({ step, issue }) => ({
+    step,
+    issue: formatUxIssue(issue),
+    scope: issue.scope,
+  }))
+}
+
+/** All issues including content-scope (for debugging or expanded views). */
+export function collectAllUxIssues(run: SimulationRun): { step: number; issue: UxIssue }[] {
+  return run.results.flatMap((r) =>
+    normalizeUxIssues(r.uxIssues).map((issue) => ({ step: r.stepIndex + 1, issue }))
+  )
+}
+
+export function productDesignIssueCount(run: SimulationRun): number {
+  return collectProductDesignIssues(run).length
 }

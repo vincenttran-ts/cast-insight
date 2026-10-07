@@ -21,7 +21,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { SettingsDialog, GatewayStatusChip, GEMINI_MODELS } from '@/components/SettingsPanel'
+import { SettingsDialog, GatewayStatusChip, GEMINI_MODELS, isRetiredModel } from '@/components/SettingsPanel'
 import { PersonaPicker } from '@/components/PersonaPicker'
 import { PersonaStudio } from '@/components/PersonaStudio'
 import { PersonaBriefingDialog } from '@/components/PersonaBriefingDialog'
@@ -47,6 +47,18 @@ import { cn } from '@/lib/utils'
 import type { AppConfig, FlowStep, Persona, PersonaTraits, SavedFlow, SimulationRun } from '@/types'
 
 const SESSION_KEY_STORAGE = 'castinsight.geminiKey'
+const MODEL_STORAGE = 'castinsight.model'
+
+// One-time, before any state reads it: a saved Gemini 1.x/2.x model id would
+// fail for every new key, so move it to the current default.
+try {
+  const saved = window.localStorage.getItem(MODEL_STORAGE)
+  if (saved && isRetiredModel(JSON.parse(saved))) {
+    window.localStorage.setItem(MODEL_STORAGE, JSON.stringify(GEMINI_MODELS[0].id))
+  }
+} catch {
+  /* storage unavailable or unparseable — the default applies */
+}
 
 type AppView = 'walkthrough' | 'personaStudio'
 
@@ -67,7 +79,7 @@ export default function App() {
     }
   }, [apiKey])
 
-  const [model, setModel] = useLocalStorage('castinsight.model', GEMINI_MODELS[0].id)
+  const [model, setModel] = useLocalStorage(MODEL_STORAGE, GEMINI_MODELS[0].id)
   const [mockMode, setMockMode] = useLocalStorage('castinsight.mockMode', true)
   const [settingsOpen, setSettingsOpen] = useState(false)
 
@@ -150,6 +162,7 @@ export default function App() {
   /* ---------- flow (steps carry screenshots → IndexedDB, no 5MB ceiling) ---------- */
   const [flowName, setFlowName] = useLocalStorage('castinsight.flowName', '')
   const [taskGoal, setTaskGoal] = useLocalStorage('castinsight.taskGoal', '')
+  const [evaluationBrief, setEvaluationBrief] = useLocalStorage('castinsight.evaluationBrief', '')
   const [steps, setSteps] = useIdbState<FlowStep[]>('castinsight.steps', [])
 
   /* ---------- saved flow library ---------- */
@@ -169,6 +182,7 @@ export default function App() {
       id: existing?.id ?? `flow-${Date.now()}`,
       name,
       taskGoal,
+      evaluationBrief: evaluationBrief.trim() || undefined,
       steps: steps.map((s) => ({ ...s, image: s.image ? { ...s.image } : undefined })),
       savedAt: new Date().toISOString(),
     }
@@ -228,6 +242,7 @@ export default function App() {
     steps: validSteps,
     flowName: flowName.trim() || 'Untitled flow',
     taskGoal: taskGoal.trim() || validSteps.map((s) => s.text).join(' → '),
+    evaluationBrief: evaluationBrief.trim() || undefined,
     model,
     mockMode,
     apiKey: apiKey.trim(),
@@ -274,6 +289,7 @@ export default function App() {
     setMockMode(true)
     setFlowName(tpl.name)
     setTaskGoal(tpl.taskGoal)
+    setEvaluationBrief(tpl.evaluationBrief ?? '')
     setSteps(demoSteps)
 
     prepareRun()
@@ -282,6 +298,7 @@ export default function App() {
       steps: demoSteps,
       flowName: tpl.name,
       taskGoal: tpl.taskGoal,
+      evaluationBrief: tpl.evaluationBrief,
       model,
       mockMode: true,
       apiKey: apiKey.trim(),
@@ -309,7 +326,17 @@ export default function App() {
   const importInput = useRef<HTMLInputElement>(null)
 
   const exportConfig = () => {
-    const config: AppConfig = { personaId, flowName, taskGoal, steps, model, mockMode, personas, savedFlows }
+    const config: AppConfig = {
+      personaId,
+      flowName,
+      taskGoal,
+      evaluationBrief: evaluationBrief.trim() || undefined,
+      steps,
+      model,
+      mockMode,
+      personas,
+      savedFlows,
+    }
     const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -333,6 +360,7 @@ export default function App() {
         if (config.personaId && knownIds.includes(config.personaId)) setPersonaId(config.personaId)
         if (typeof config.flowName === 'string') setFlowName(config.flowName)
         if (typeof config.taskGoal === 'string') setTaskGoal(config.taskGoal)
+        if (typeof config.evaluationBrief === 'string') setEvaluationBrief(config.evaluationBrief)
         if (Array.isArray(config.steps)) setSteps(config.steps)
         if (config.model && GEMINI_MODELS.some((m) => m.id === config.model)) setModel(config.model)
         if (typeof config.mockMode === 'boolean') setMockMode(config.mockMode)
@@ -479,6 +507,9 @@ export default function App() {
             savePersona(normalizePersona({ ...saved, shared: true }))
           }}
           onDeleteTeamPersona={removeTeamPersona}
+          mockMode={mockMode}
+          apiKey={apiKey}
+          model={model}
         />
       ) : (
       <main
@@ -512,6 +543,8 @@ export default function App() {
             onFlowNameChange={setFlowName}
             taskGoal={taskGoal}
             onTaskGoalChange={setTaskGoal}
+            evaluationBrief={evaluationBrief}
+            onEvaluationBriefChange={setEvaluationBrief}
             steps={steps}
             onStepsChange={setSteps}
             savedFlows={savedFlows}

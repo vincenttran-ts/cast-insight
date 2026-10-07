@@ -19,6 +19,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { cn } from '@/lib/utils'
+import { isProductDesignIssue, normalizeUxIssues, UX_ISSUE_SCOPE_LABELS } from '@/lib/uxIssues'
 import type { ActionType, SimulationRun, StepResult } from '@/types'
 
 const ACTION_META: Record<ActionType, { icon: typeof MousePointerClick; label: string; className: string }> = {
@@ -193,9 +194,12 @@ function FeedEntry({ result }: { result: StepResult }) {
             <div>
               <p className="mb-1.5 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
                 <Eye className="h-3 w-3" />
-                Observed On Screen
+                UI structure observed
               </p>
-              <p className="text-xs leading-relaxed text-muted-foreground">{result.observedElements}</p>
+              <p className="text-[10px] text-muted-foreground/80">
+                Seed values listed for grounding only; not scored as design defects.
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{result.observedElements}</p>
             </div>
           )}
 
@@ -215,16 +219,26 @@ function FeedEntry({ result }: { result: StepResult }) {
             </span>
           </div>
 
-          {result.uxIssues.length > 0 && (
-            <ul className="space-y-1">
-              {result.uxIssues.map((issue) => (
-                <li key={issue} className="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400">
-                  <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
-                  {issue}
-                </li>
-              ))}
-            </ul>
-          )}
+          {(() => {
+            const issues = normalizeUxIssues(result.uxIssues).filter(isProductDesignIssue)
+            if (issues.length === 0) return null
+            return (
+              <ul className="space-y-1">
+                {issues.map((issue) => (
+                  <li
+                    key={`${issue.scope}-${issue.issue}`}
+                    className="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400"
+                  >
+                    <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+                    <Badge variant="outline" className="mt-0.5 shrink-0 text-[9px] font-normal">
+                      {UX_ISSUE_SCOPE_LABELS[issue.scope]}
+                    </Badge>
+                    <span className="leading-snug">{issue.issue}</span>
+                  </li>
+                ))}
+              </ul>
+            )
+          })()}
         </div>
       </div>
     </div>

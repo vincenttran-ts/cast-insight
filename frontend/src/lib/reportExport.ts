@@ -300,11 +300,13 @@ export function buildStandaloneReportHtml(run: SimulationRun): string {
             '<div><p class="text-[10px] uppercase tracking-widest text-zinc-500 mb-1">Action Taken</p>' +
               '<p class="text-sm font-mono text-zinc-200">' + escapeH(r.action) + '</p></div>' +
             (r.uxIssues.length ? '<div><p class="text-[10px] uppercase tracking-widest text-zinc-500 mb-1">Flagged Issues</p><ul class="text-xs text-amber-300/90 space-y-1 list-disc pl-4">' +
-              r.uxIssues.map(function (i) { return '<li>' + escapeH(i) + '</li>'; }).join('') + '</ul></div>' : '') +
+              r.uxIssues.filter(function (i) { return issueScope(i) !== 'content'; }).map(function (i) { return '<li>' + escapeH(issueText(i)) + '</li>'; }).join('') + '</ul></div>' : '') +
           '</div>' +
         '</div></details>';
     }).join('');
     function escapeH(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+    function issueText(i) { return typeof i === 'string' ? i : (i && i.issue ? i.issue : String(i)); }
+    function issueScope(i) { return typeof i === 'object' && i && i.scope ? i.scope : 'interaction'; }
     window.__escapeH = escapeH;
   })();
 
@@ -313,7 +315,10 @@ export function buildStandaloneReportHtml(run: SimulationRun): string {
     var host = document.getElementById('panel-issues');
     var issues = [];
     DATA.results.forEach(function (r) {
-      r.uxIssues.forEach(function (i) { issues.push({ step: r.stepIndex + 1, issue: i, frustration: r.frustration }); });
+      r.uxIssues.forEach(function (i) {
+        if (issueScope(i) === 'content') return;
+        issues.push({ step: r.stepIndex + 1, issue: issueText(i), frustration: r.frustration });
+      });
     });
     if (!issues.length) {
       host.innerHTML = '<div class="rounded-lg border border-edge bg-card p-8 text-center text-sm text-zinc-500">No UX issues were flagged in this run. 🎉</div>';

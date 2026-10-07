@@ -36,6 +36,7 @@ import {
 import { cn } from '@/lib/utils'
 import { PersonaEditorForm } from '@/components/PersonaEditorForm'
 import { PersonaStartStep } from '@/components/PersonaStartStep'
+import { PersonaGenerateStep } from '@/components/PersonaGenerateStep'
 import { PersonaCard } from '@/components/PersonaCard'
 import { personaFromPreset } from '@/lib/personas'
 import {
@@ -65,6 +66,9 @@ interface PersonaStudioProps {
   onForkPersona: (persona: Persona) => Persona
   onPublishPersona: (persona: Persona, authorName?: string) => Promise<void>
   onDeleteTeamPersona: (id: string) => Promise<void>
+  mockMode: boolean
+  apiKey: string
+  model: string
 }
 
 function formatFetchedAt(iso: string | null) {
@@ -92,6 +96,9 @@ export function PersonaStudio({
   onForkPersona,
   onPublishPersona,
   onDeleteTeamPersona,
+  mockMode,
+  apiKey,
+  model,
 }: PersonaStudioProps) {
   const [search, setSearch] = useState('')
   const [segmentFilter, setSegmentFilter] = useState<SegmentFilter>('all')
@@ -100,7 +107,7 @@ export function PersonaStudio({
   )
   const [draft, setDraft] = useState<Persona | null>(null)
   const [isNew, setIsNew] = useState(false)
-  const [creating, setCreating] = useState<'choose' | 'edit' | null>(null)
+  const [creating, setCreating] = useState<'choose' | 'generate' | 'edit' | null>(null)
   const [guidedTab, setGuidedTab] = useState<PersonaEditorTab>('character')
   const [deleting, setDeleting] = useState<Persona | null>(null)
   const [deletingTeam, setDeletingTeam] = useState<Persona | null>(null)
@@ -159,6 +166,22 @@ export function PersonaStudio({
     const seeded = personaFromPreset(presetId)
     setDraft(clonePersonaDraft(seeded))
     setSelectedId(seeded.id)
+    setIsNew(true)
+    setCreating('edit')
+    setGuidedTab('character')
+  }
+
+  const handleStartGenerate = () => {
+    setCreating('generate')
+    setDraft(null)
+    setSelectedId(null)
+    setIsNew(false)
+    setPublishError(null)
+  }
+
+  const handleUseGenerated = (persona: Persona) => {
+    setDraft(clonePersonaDraft(persona))
+    setSelectedId(persona.id)
     setIsNew(true)
     setCreating('edit')
     setGuidedTab('character')
@@ -234,7 +257,12 @@ export function PersonaStudio({
           {creating || isNew ? (
             <>
               <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                <StepChip index={1} label="Choose style" active={creating === 'choose'} done={creating === 'edit' || isNew} />
+                <StepChip
+                  index={1}
+                  label={creating === 'generate' ? 'Generate' : 'Choose style'}
+                  active={creating === 'choose' || creating === 'generate'}
+                  done={creating === 'edit' || isNew}
+                />
                 <ChevronRight className="h-3 w-3 opacity-50" />
                 <StepChip index={2} label="Fill details" active={creating === 'edit' || isNew} done={false} />
                 <ChevronRight className="h-3 w-3 opacity-50" />
@@ -348,13 +376,21 @@ export function PersonaStudio({
         <div className="flex min-h-0 min-w-0 flex-col p-4">
           {creating === 'choose' ? (
             <>
-              <PersonaStartStep onPick={handlePickPreset} />
+              <PersonaStartStep onPick={handlePickPreset} onGenerate={handleStartGenerate} />
               <div className="mt-4 flex shrink-0 gap-2 border-t pt-4">
                 <Button variant="ghost" onClick={handleCancelNew}>
                   Cancel
                 </Button>
               </div>
             </>
+          ) : creating === 'generate' ? (
+            <PersonaGenerateStep
+              mockMode={mockMode}
+              apiKey={apiKey}
+              model={model}
+              onUse={handleUseGenerated}
+              onBack={() => setCreating('choose')}
+            />
           ) : draft ? (
             <>
               <PersonaEditorForm

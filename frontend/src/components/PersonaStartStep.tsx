@@ -21,13 +21,14 @@ const SEGMENT_TABS: { value: SegmentFilter; label: string }[] = [
 
 interface PersonaStartStepProps {
   onPick: (presetId: string | 'blank') => void
+  onGenerate: () => void
 }
 
 /**
  * Preset-first entry point for creating a persona. Designers pick a curated
  * actor thinking style (or start blank) so the editor opens pre-filled.
  */
-export function PersonaStartStep({ onPick }: PersonaStartStepProps) {
+export function PersonaStartStep({ onPick, onGenerate }: PersonaStartStepProps) {
   const [segment, setSegment] = useState<SegmentFilter>('all')
 
   const presets = THINKING_STYLE_PRESETS.filter(
@@ -36,13 +37,29 @@ export function PersonaStartStep({ onPick }: PersonaStartStepProps) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      <div className="mb-4 shrink-0">
+        <button
+          type="button"
+          onClick={onGenerate}
+          className={cn(
+            'flex w-full flex-col gap-1 rounded-lg border-2 border-primary/30 bg-primary/5 p-4 text-left transition-colors',
+            'hover:border-primary hover:bg-primary/10'
+          )}
+        >
+          <span className="flex items-center gap-2 text-sm font-semibold text-primary">
+            <Sparkles className="h-4 w-4" />
+            Generate with AI
+          </span>
+          <span className="text-xs text-muted-foreground">
+            Describe who they are and what they are trying to do — get a walkthrough-ready persona in seconds.
+          </span>
+        </button>
+      </div>
+
       <div className="shrink-0 space-y-1 pb-3">
-        <h3 className="flex items-center gap-2 text-sm font-semibold">
-          <Sparkles className="h-4 w-4 text-primary" />
-          Start from an actor mindset
-        </h3>
+        <h3 className="text-sm font-semibold">Or start from a curated mindset</h3>
         <p className="text-xs text-muted-foreground">
-          Pick a curated thinking style to pre-fill the persona, then tune the details. You can also start from scratch.
+          Pick a thinking style to pre-fill the persona, then tune the details. You can also start from scratch.
         </p>
       </div>
 

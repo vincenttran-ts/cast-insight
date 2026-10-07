@@ -1,4 +1,4 @@
-import type { Persona, StepResult } from '@/types'
+import type { Persona, PersonaGenerateInput, StepResult } from '@/types'
 
 /**
  * Thin client for the CastInsight Express gateway. The Gemini API key lives
@@ -14,7 +14,9 @@ export interface SimulateStepRequest {
   stepIndex: number
   totalSteps: number
   taskGoal: string
+  evaluationBrief?: string
   expectedOutcome?: string
+  designNotes?: string
   priorContext: Pick<StepResult, 'action' | 'frustration' | 'succeeded'>[]
   image?: { data: string; mimeType: string }
 }
@@ -35,7 +37,9 @@ export async function simulateStep(req: SimulateStepRequest): Promise<SimulateSt
       stepIndex: req.stepIndex,
       totalSteps: req.totalSteps,
       taskGoal: req.taskGoal,
+      evaluationBrief: req.evaluationBrief,
       expectedOutcome: req.expectedOutcome,
+      designNotes: req.designNotes,
       priorContext: req.priorContext,
       image: req.image,
     }),
@@ -46,6 +50,32 @@ export async function simulateStep(req: SimulateStepRequest): Promise<SimulateSt
     throw new Error(body.error || `Backend error (${res.status})`)
   }
   return body as SimulateStepResponse
+}
+
+export async function generatePersonaViaApi(
+  input: PersonaGenerateInput,
+  apiKey: string,
+  model: string
+): Promise<Persona> {
+  const res = await fetch('/api/generate-persona', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-gemini-api-key': apiKey,
+    },
+    body: JSON.stringify({
+      who: input.who,
+      task: input.task,
+      constraints: input.constraints,
+      model,
+    }),
+  })
+
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(body.error || `Failed to generate persona (${res.status})`)
+  }
+  return body.persona as Persona
 }
 
 export async function validateKey(apiKey: string, model: string): Promise<{ ok: boolean; error?: string }> {

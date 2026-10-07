@@ -28,7 +28,8 @@ Open http://localhost:5173. With no API key, flip on **Sandbox Mock Mode** in th
 /frontend         Vite + React + TypeScript + Tailwind (shadcn-style UI)
   src/components/
     SettingsPanel.tsx    Gemini gateway: key, model dropdown
-                         (gemini-2.5-flash / gemini-1.5-pro), mock toggle
+                         (gemini-3.8-flash / 3.5-flash-lite / 3.1-pro-preview),
+                         mock toggle
     PersonaPanel.tsx     persona roster + trait sliders (Tech Literacy,
                          Frustration Threshold, Industry Experience)
     PersonaEditor.tsx    create/edit dialog for personas (built-ins are
